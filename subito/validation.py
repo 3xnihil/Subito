@@ -65,43 +65,84 @@ def is_netmask_well_formed(netmask: str) -> bool:
     return False
 
 
-def do_blocks_fit_inside_network(prefix: int, host_blocks_len: list[int]) -> tuple[bool, list[tuple[int, int]]]:
+def investigate_network_block_fit(
+        orig_prefix: int,
+        required_host_blocks_len: list[int]) -> tuple[bool, list[tuple[int, int, int, int, int]]]:
     """
     Investigate whether a given prefix for arbitrary networks is suitable to provide enough space
     for both given host block lengths in bits and the count of required subnets.
-    :param prefix: Prefix of the network, which address space is to be compartmentalized.
-    :param host_blocks_len: List of hostblock lengths in bits to be tested whether they fit in.
-        The list's length implies the count of subnets which would be necessary.
+    :param orig_prefix: Prefix of the network, which address space is to be compartmentalized.
+    :param required_host_blocks_len: List of host block lengths in bits to be tested whether
+        they fit into the subnet portion in question.
+        The required amount of host blocks which are to be tested to fit into the same subnet portion in question
+        equals the amount of host blocks with the same length inside the list ``required_host_blocks_len``.
     :return: Tuple with test result. If all blocks fit, its first element is True and second element
         is an empty list. If at least a single block collision occurs, its first element is False
         and the second will be a list containing the affected subnets, referenced by a tuple
-        consisting of (1) the subnet's number and (2) its block length.
+        consisting of: (1) the subnet sequence number, (2) its host block length, (3) the size of block overlap
+        when host block length is exceeded (collision), (4) its subnetting block length and
+        (5) the size of block overlap when the count of demanded subnets exceeds the subnetting
+        block space available (explosion).
         Examples: Investigation successful: [True, []]
-                  Investigation unsuccessful: [False, [(2, 8), (3, 8)]]; subnet 2 with a host
-                  block size of 8 bits and subnet 3 with a host block size of 8 bits are faulty.
-    :except ValueError: If there are less than 2 entries inside ``host_blocks_len``
-        or the ``prefix`` is invalid (not between 8 and 30).
+                  Investigation unsuccessful: [False, [(3, 8, 1, 1, 0), (4, 8, 1, 1, 0)]]
+                  --> Subnets with sequence numbers 3 and 4 would have issues.
+                  Regarding net 3 and 4, host block size is 8 bits, host block collides with
+                  network block (overlap of 1 bit), subnetting block size is 1 bit, not exploding
+                  because there is no overlap with host block (overlap of 0 bits).
+    :except ValueError: If the ``prefix`` is invalid (not between 8 and 30),
+        ``required_host_blocks_len`` contains less than 2 entries
+        or at least a single host block length is shorter than 2.
     """
-    if not prefix in range(8, 31): raise ValueError("Invalid prefix, must keep between 8 and 30!")
-    if len(host_blocks_len) < 2: raise ValueError("Provide at least 2 host blocks!")
+    if not orig_prefix in range(8, 31): raise ValueError("Invalid prefix, must keep between 8 and 30!")
+    if len(required_host_blocks_len) < 2: raise ValueError("Host block list must provide at least 2 entries!")
+    if [block_len < 2 for block_len in required_host_blocks_len].count(True):
+        raise ValueError("Every host block length provided inside the list must be at least 2 bits!")
 
-    # First, make sure the blocks are in the right order from largest to smallest:
-    host_blocks_len.sort(reverse=True)
+    # First, sort all host blocks from the largest down to the smallest:
+    required_host_blocks_len.sort(reverse=True)
+    shortest_host_block_len = required_host_blocks_len[-1:][0]
+    has_investigation_been_successful = True
     faulty_host_blocks = []
 
-    # Calculate subnetting block size. Important: Subtract one from the host blocks' list's length,
-    # because the subnet block starts counting at zero (i.e. two subnets require a single subnetting bit).
-    subnet_block_len = len(bin(len(host_blocks_len)-1)[2:])
-    network_block_len = prefix + subnet_block_len
+    for (n, required_host_block_len) in enumerate(required_host_blocks_len):
+        required_subnets_of_this_type = required_host_blocks_len.count(required_host_block_len)
+        required_prefix = 32 - required_host_block_len
 
-    # Now, check each host block against the network block. If both exceed 32 bits address space,
-    # subnetting will not work out for this config!
-    for (n, host_block_len) in enumerate(host_blocks_len):
-        total_block_len = network_block_len + host_block_len
-        if total_block_len > 32: faulty_host_blocks.append((n+1, host_block_len))
+        # Network counting starts from zero, so subtract one from required net count to reflect this in bit length!
+        required_subnetting_block_len = len(bin(required_subnets_of_this_type - 1)[2:])
 
-    do_all_blocks_fit = len(faulty_host_blocks) == 0
-    return do_all_blocks_fit, faulty_host_blocks
+        # Available subnetting portion. Network counting starts from zero as well:
+        if required_prefix <= orig_prefix:
+            available_subnets_of_this_type = 0
+            available_subnetting_block_len = 0
+        else:
+            available_subnets_of_this_type = pow(2, required_prefix - orig_prefix)
+            available_subnetting_block_len = len(bin(available_subnets_of_this_type - 1)[2:])
+
+        # Does the required host block fit?
+        # ==> If this does not work out, it will affect the first and largest block(s) only:
+        if required_prefix < orig_prefix:
+            has_investigation_been_successful = False
+            host_block_overlap = orig_prefix - required_prefix
+            faulty_host_blocks.append(
+                (n+1, required_host_block_len, host_block_overlap, available_subnetting_block_len, 0)
+            )
+
+        # If host block fits, test if subnet block size is sufficient for the host block count demanded:
+        else:
+            # As long as fewer subnets are demanded than would be available, it's no problem adding further blocks.
+            # If their number equals or even exceeds the space granted by the subnetting block, the journey stops here:
+            if ((required_subnets_of_this_type >= available_subnets_of_this_type
+                    and required_host_block_len > shortest_host_block_len)
+                or (required_subnets_of_this_type > available_subnets_of_this_type
+                    and required_host_block_len == shortest_host_block_len)):
+                has_investigation_been_successful = False
+                subnetting_block_overlap = required_subnetting_block_len - available_subnetting_block_len
+                faulty_host_blocks.append(
+                    (n+1, required_host_block_len, 0, available_subnetting_block_len, subnetting_block_overlap)
+                )
+
+    return has_investigation_been_successful, faulty_host_blocks
 
 
 def investigate_special_use(ip: str) -> tuple[bool, bool, str]:
@@ -115,7 +156,7 @@ def investigate_special_use(ip: str) -> tuple[bool, bool, str]:
         First element is True if the IP address in question belongs to a special use case,
         second element is True if the IP address is still suitable for subnetting (RFC1918 only),
         along with third string element describing what kind of use case.
-        If no special use case is found, first and second bool will be False and the description
+        If no special use case is found, first bool is False, second is True and the description
         string remains empty.
     """
     if not is_ipaddr_well_formed(ip): raise ValueError("Invalid IP address!")
@@ -162,5 +203,4 @@ def investigate_special_use(ip: str) -> tuple[bool, bool, str]:
                 special_use_networks.get(special_use_octet_tuple)[2]    # Description: What kind of special-use
             )
     # IP address given by user does not match any special-use network address portion:
-    return False, False, ""
-
+    return False, True, ""

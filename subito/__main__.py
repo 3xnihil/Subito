@@ -15,4 +15,6 @@ from . import cmds
 def cli():
     pass
 
-# TODO: Add all functions from module 'cmds' and add them to cli group!
+cli.add_command(cmds.create_netplan)
+cli.add_command(cmds.convert)
+cli.add_command(cmds.validate)

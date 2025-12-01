@@ -121,11 +121,11 @@ def get_addr_class(ip: str) -> tuple[str, int]:
         prefixes and should only be used if one knows what s:he is doing,
         the function will return a prefix of zero in this case!
     """
+    prefix = 0
     if not validation.is_ipaddr_well_formed(ip): raise ValueError("Invalid IP address!")
     ip_filter = re.compile(r"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$")
-    ip_bin_str = ''.join([bin(int(octet))[2:] for octet in ip_filter.findall(ip)[0]])
-    prefix = 0
-    first_nibble_bin_str = ip_bin_str[:4]
+    first_octet_bin_str = bin(int(ip_filter.findall(ip)[0][0]))[2:].rjust(8, '0')
+    first_nibble_bin_str = first_octet_bin_str[:4]
     if first_nibble_bin_str[0] == '0': addr_class = "A"; prefix = 8
     elif first_nibble_bin_str[:2] == '10': addr_class = "B"; prefix = 16
     elif first_nibble_bin_str[:3] == '110': addr_class = "C"; prefix = 24
@@ -134,9 +134,37 @@ def get_addr_class(ip: str) -> tuple[str, int]:
     return addr_class, prefix
 
 
+def convert_ip_addr_to_octet_notation_str(ip) -> str:
+    """
+    Convert an IP address from either binary string or integer format into
+    the commonly known and human-readable octet string notation.
+    :param ip: IP address, either encoded into an integer or binary string.
+    :except TypeError: If ``ip`` is neither an integer nor a string.
+    :except ValueError: If ``ip`` does neither resemble a valid IP address
+        in integer nor in binary string encoding.
+    :return: IP address string in octet notation.
+    """
+    if not (isinstance(ip, int) or isinstance(ip, str)):
+        raise TypeError("Param 'ip' must either be of type 'int' or 'str'!")
+    if isinstance(ip, str) and not (len(ip) == 32 and len(set(ip)) == 2 and ('1' and '0' in set(ip))):
+        raise ValueError("Param 'ip' is not a valid binary IP string!")
+    if isinstance(ip, int) and not (len(bin(ip)[2:].rjust(32, '0')) == 32 and ip >= 0):
+        raise ValueError("Param 'ip' is not a valid IP integer!")
+
+    ip_addr_octet_str = ""
+    if isinstance(ip, str):
+        octets = [str(int(ip[n:n + 8], 2)) for n in range(0, 24 + 1, 8)]
+        ip_addr_octet_str = '.'.join(octets)
+    if isinstance(ip, int):
+        ip_addr_bin_str = bin(ip)[2:].rjust(32, '0')
+        octets = [str(int(ip_addr_bin_str[n:n + 8], 2)) for n in range(0, 24 + 1, 8)]
+        ip_addr_octet_str = '.'.join(octets)
+    return ip_addr_octet_str
+
+
 def create_subnets(
         orig_ip: str,
-        host_blocks_len: list[int]) -> list[tuple[str, str, str, str, str, str, str, str]]:
+        host_blocks_len: list[int]) -> list[tuple[str, str, str, str, str, str, str, str, str]]:
     """
     Perform actual subnetting on a given network and create a list of final subnets
     if the demanded host blocks all fit into.
@@ -151,10 +179,76 @@ def create_subnets(
         and / or too large blocks such that network and host blocks don't fit all in,
         or the original network defined by ``orig_ip`` cannot provide enough space (it depends on
         how a user weighs the aspects at all). Will also be raised if user tries
-        to use an address from a reserved space (see RFC7535).
-    :return: List containing final subnets with their properties stored inside a tuple
+        to use an address from a space of special use not suitable for subnetting (see RFC 7535,
+        https://www.rfc-editor.org/rfc/rfc5735#section-4).
+    :except ValueError: If IP address octet string, ``orig_ip``, is invalid or if
+        the last octet of ``orig_ip`` is not an even number (ends with zero in binary)
+        and therefore is not a valid network address.
+    :return: List containing final subnets with their properties stored as strings inside a tuple
         of the form ("<subnet IP addr>", "<subnet mask>", "<prefix>",
-        "<first host IP addr>", "<last host IP addr>",
-        "<broadcast IP addr>", "<succeeding subnet IP addr>").
+        "<first host IP addr>", "<last host IP addr>", "<broadcast IP addr>",
+        "<succeeding subnet IP addr>", "<max host count>", "<annotation (if any, otherwise empty string)>").
     """
+    final_subnets = []
+    annotation = ""
 
+    # First check: Address suitable for subnetting at all?
+    is_special_use_case, is_apt_for_subnetting, description = validation.investigate_special_use(orig_ip)
+    if is_special_use_case and not is_apt_for_subnetting:
+        raise UserWarning(f"Address reserved for special purpose: {description}")
+    elif is_special_use_case and is_apt_for_subnetting:
+        annotation = f"Will not be routed: {description}"
+    orig_addr_class, orig_prefix = get_addr_class(orig_ip)
+    if orig_addr_class not in "ABC":
+        raise UserWarning(f"Addresses aside the classes A, B and C shouldn't be used for subnetting!")
+
+    # If suitable, test if all blocks will fit:
+    do_all_blocks_fit, faulty_blocks = validation.investigate_network_block_fit(orig_prefix, host_blocks_len)
+    if not do_all_blocks_fit:
+        faulty_subnets_descriptions = [
+            f"{faulty_block[0]}. subnet: {pow(2, faulty_block[1])-2} hosts max\n"
+            f"\thost portion: BS={faulty_block[1]} bits, "
+            f"{faulty_block[2]} bits colliding with network portion\n"
+            f"\tsubnet portion: BS={faulty_block[3]} bits, "
+            f"{faulty_block[4]} bits exploding (exceed available subnets)"
+            for faulty_block in faulty_blocks
+        ]
+        err_description = f"Some of your demanded subnets won't fit:\n{'\n'.join(faulty_subnets_descriptions)}"
+        raise UserWarning(err_description)
+
+    # Everything is fine, so let's perform the actual subnetting:
+    else:
+        # Convert IP string to binary. Only even IP addresses are valid network addresses:
+        ip_filter = re.compile(r"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$")
+        orig_ip_bin_str = ''.join([bin(int(octet))[2:].rjust(8, '0') for octet in ip_filter.findall(orig_ip)[0]])
+        if orig_ip_bin_str[-1:] == '1': raise ValueError(
+            "The last octet of a valid network address must be an even number (ends with zero in binary)!"
+        )
+        # Internally, it's best to calculate with actual numeric values of IP addresses
+        current_ip_addr_int = int(orig_ip_bin_str, 2)
+        host_blocks_len.sort(reverse=True)
+
+        for (n, demanded_host_block_len) in enumerate(host_blocks_len):
+            subnet_host_count = pow(2, demanded_host_block_len) - 2
+            subnet_addr_int = current_ip_addr_int
+            subnet_succeeding_addr_int = subnet_addr_int + pow(2, demanded_host_block_len)
+            subnet_prefix = 32 - demanded_host_block_len
+            subnet_first_host_addr_int = subnet_addr_int + 1
+            subnet_last_host_addr_int = subnet_succeeding_addr_int - 2
+            subnet_broadcast_addr_int = subnet_succeeding_addr_int - 1
+            current_ip_addr_int += pow(2, demanded_host_block_len)
+            # Convert these subnet properties into human-readable octet format:
+            subnet_addr_str = convert_ip_addr_to_octet_notation_str(subnet_addr_int)
+            subnet_first_host_addr_str = convert_ip_addr_to_octet_notation_str(subnet_first_host_addr_int)
+            subnet_last_host_addr_str = convert_ip_addr_to_octet_notation_str(subnet_last_host_addr_int)
+            subnet_broadcast_addr_str = convert_ip_addr_to_octet_notation_str(subnet_broadcast_addr_int)
+            subnet_succeeding_addr_str = convert_ip_addr_to_octet_notation_str(subnet_succeeding_addr_int)
+            subnet_mask_str = convert_prefix_to_mask(subnet_prefix)
+            final_subnets.append(
+                (
+                    subnet_addr_str, subnet_mask_str, str(subnet_prefix),
+                    subnet_first_host_addr_str, subnet_last_host_addr_str, subnet_broadcast_addr_str,
+                    subnet_succeeding_addr_str, str(subnet_host_count), annotation
+                )
+            )
+        return final_subnets
