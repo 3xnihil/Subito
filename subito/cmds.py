@@ -11,6 +11,7 @@
 import click
 import calc
 import output as out
+import validation
 
 
 @click.command(
@@ -68,15 +69,78 @@ def create_netplan(config_string, ip_address, save_spreadsheet):
         raise SystemExit(1)
 
     except Exception as e:
-        click.echo(f"\n💥 Sorry, undefined problem: {e}\n")
+        click.echo(f"\n💥 Sorry, unexpected problem: {e}\n")
         raise SystemExit(3)
 
 
-@click.command()
-def convert():
-    pass
+@click.command(
+    help=f"MASK_OR_PREFIX may contain either a subnet mask "
+         f"in decimal octet notation (i.e '255.255.224.0', 255.255.0.0') "
+         f"OR a network prefix (i.e. '24', '8', '16') to be converted to the opposite format."
+)
+@click.argument(
+    "mask_or_prefix",
+    type=click.STRING,
+    nargs=1
+)
+def convert(mask_or_prefix):
+    # Determine what kind of data: Prefix or subnet mask?
+    if len(mask_or_prefix) < 3 and mask_or_prefix.isdigit() and int(mask_or_prefix) in range(8, 30+1):
+        click.echo(f"As a subnet mask: {calc.convert_prefix_to_mask(int(mask_or_prefix))}")
+        SystemExit(0)
+    elif validation.is_netmask_well_formed(mask_or_prefix):
+        click.echo(f"As a prefix: /{calc.convert_mask_to_prefix(mask_or_prefix)}")
+        SystemExit(0)
+    else:
+        click.echo(f"⚠️ Conversion not possible: Neither a valid prefix nor subnet mask!")
+        SystemExit(2)
 
 
-@click.command()
-def validate():
-    pass
+@click.command(
+    help=f"IP_ADDR may contain any valid IPv4 address to inspect. "
+         f"This command will tell basic information about this address (like its class) "
+         f"and whether it has certain special use cases."
+)
+@click.argument(
+    "ip_addr",
+    type=click.STRING,
+    nargs=1
+)
+@click.option(
+    "-p", "--custom-prefix",
+    help=f"Helpful if you want to determine the network of any given IP address.",
+    type=click.INT,
+    nargs=1
+)
+def inspect(ip_addr, custom_prefix):
+    try:
+        is_special_use, is_apt_for_subnetting, description = validation.investigate_special_use(ip_addr)
+        addr_class, default_prefix = calc.get_addr_class(ip_addr)
+        click.echo(f"\nInspection results for IP {ip_addr}:\n")
+        click.echo(
+            f"\tAddress class:  {addr_class}\n"
+        )
+        # When a class D or E address is provided, 'get_addr_class()' returns a zero prefix, which would
+        # lead to misleading error concerning wrong prefix. To prevent that, 'default_prefix' is also checked:
+        if default_prefix:
+            click.echo(
+                f"\tDefault prefix: /{default_prefix}\n"
+                f"\tDefault mask:   {calc.convert_prefix_to_mask(default_prefix)}\n"
+            )
+        if is_apt_for_subnetting and addr_class in "ABC" and custom_prefix and custom_prefix in range(8, 30+1):
+            ip_addr_int = calc.convert_ip_octet_notation_str_to_int(ip_addr)
+            ip_net_addr_int = ip_addr_int & (int('1' * custom_prefix, 2) << 32 - custom_prefix)
+            ip_net_addr_str = calc.convert_ip_addr_to_octet_notation_str(ip_net_addr_int)
+            click.echo(f"\tNetwork addr: {ip_net_addr_str}/{custom_prefix}")
+        elif is_apt_for_subnetting and addr_class in "ABC" and custom_prefix and custom_prefix not in range(8, 30+1):
+            click.echo(f"\t⚠️ Cannot determine network address: Custom prefix is invalid!\n")
+        if addr_class not in "ABC":
+            click.echo(
+                f"\t⚠️ Please note: Address spaces below the classes\n\t A, B and C shouldn't be used for subnetting!\n"
+            )
+        if is_special_use:
+            click.echo(f"\tSpecial use case: {description}\n")
+
+    except ValueError as e:
+        click.echo(f"⚠️ {e}")
+        raise SystemExit(2)

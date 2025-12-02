@@ -136,7 +136,7 @@ def get_addr_class(ip: str) -> tuple[str, int]:
 
 def convert_ip_addr_to_octet_notation_str(ip) -> str:
     """
-    Convert an IP address from either binary string or integer format into
+    Convert an IPv4 address from either binary string or integer format into
     the commonly known and human-readable octet string notation.
     :param ip: IP address, either encoded into an integer or binary string.
     :except TypeError: If ``ip`` is neither an integer nor a string.
@@ -160,6 +160,19 @@ def convert_ip_addr_to_octet_notation_str(ip) -> str:
         octets = [str(int(ip_addr_bin_str[n:n + 8], 2)) for n in range(0, 24 + 1, 8)]
         ip_addr_octet_str = '.'.join(octets)
     return ip_addr_octet_str
+
+
+def convert_ip_octet_notation_str_to_int(ip: str) -> int:
+    """
+    Convert an IPv4 octet notation string to its numerical integer representation to calc with.
+    :param ip: IP address string in decimal octet notation.
+    :except ValueError: If IP address string is malformed.
+    :return: Numerical value of this IP address as an integer.
+    """
+    if not validation.is_ipaddr_well_formed(ip): raise ValueError("Invalid IP address!")
+    ip_filter = re.compile(r"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$")
+    ip_bin_str = ''.join([bin(int(octet))[2:].rjust(8, '0') for octet in ip_filter.findall(ip)[0]])
+    return int(ip_bin_str, 2)
 
 
 def create_subnets(
