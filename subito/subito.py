@@ -1,4 +1,4 @@
-# ./subito/__main__.py
+# ./subito/subito.py
 #
 # SUBito subnetting tool
 # Author: Johannes Hüffer
@@ -9,7 +9,7 @@
 #
 
 import click
-from . import cmds
+import cmds
 
 @click.group()
 def cli():
@@ -18,3 +18,6 @@ def cli():
 cli.add_command(cmds.create_netplan)
 cli.add_command(cmds.convert)
 cli.add_command(cmds.validate)
+
+if __name__ == '__main__':
+    cli()

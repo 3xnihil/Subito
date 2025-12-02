@@ -9,39 +9,39 @@
 #
 
 import re
-from . import validation
+import validation
 from math import ceil
 
 
-def get_host_blocks(user_config_str: str, is_binary_block_len: bool=False) -> list[int]:
+def get_host_blocks(user_config_str: str, is_binary_block_len: bool=True) -> list[int]:
     """
-    From a given user config string, get a list of host counts
+    From a given user config string, get a list of host blocks
     telling how many hosts every demanded subnet should be capable of.
-    If an additional flag is set, the function will return the required host block
-    size for each subnet.
-    :param user_config_str: User configuration string. It has the basic form "h:r",
+    If block-length flag becomes unset, the function will return the required absolute host block
+    amounts for each subnet.
+    :param user_config_str: User configuration string. It has the basic form "<h>:<r>",
         which stands for a single subnet, which should be capable of a certain count
         of hosts (digit 'h' before colon, where 'h' >= 2) and should offer a reserve
         in percent for future expansion, which may be zero if no reserve
         is desired (digit 'r' after colon, where 'r' >= 0).
-        This expression can be extended by an optional multiplier 'n' put in brackets,
-        which is to be appended to the basic form, resulting in "h:r(n)", if a subnet
+        This expression can be extended by an optional multiplier 'n' preceded by lower char "x",
+        which is to be appended to the basic form, resulting in "<h>:<r>x<n>", if a subnet
         of this type should be implemented for 'n' times.
-        The config string must contain at least either two basic strings ("h:r h:r")
-        or a single extended string along with a multiplier ("h:r(n)", where 'n' >= 1).
+        The config string must contain at least either two basic strings ("<h>:<r> <h>:<r>")
+        or a single extended string along with a multiplier ("<h>:<r>x<n>", where 'n' >= 2).
         Examples: "300:20 1500:0" --> Two subnets, one consisting of 300 initial hosts,
             offering a reserve of 30% of the host count, one consisting of 1500 hosts
             offering no reserve at all;
-            "200:150(4) 2:0(10) 4000:10" --> 15 subnets, one consisting of 4000 hosts
+            "200:150x4 2:0x10 4000:10" --> 15 subnets, one consisting of 4000 hosts
             offering 10% reserve, four consisting of 200 hosts offering 150% reserve,
             ten peer-to-peer networks (two hosts) offering no reserve.
-    :param is_binary_block_len: If set to True, the function will return the host
-        block sizes in bits each subnet would require.
+    :param is_binary_block_len: Defaults to True. If set to False, the function will return the host
+        counts rather than block sizes in bits each subnet would require.
     :except ValueError: If host count not 'h' >= 2 or multiplier not 'n' >= 1.
-    :return: List, containing either final host counts or the required host block sizes
-        in bits for each demanded subnet, ordered from the largest down to the smallest.
+    :return: List, containing either demanded host block sizes in bits or the demanded host count
+        for each subnet, ordered from the largest down to the smallest.
     """
-    config_regex = r"(\d+):(\d+)(?:\((\d+)\))?"
+    config_regex = r"(\d+):(\d+)(?:x(\d+))?"
     config_filter = re.compile(config_regex)
     configs_found = config_filter.findall(user_config_str)
 
@@ -164,7 +164,7 @@ def convert_ip_addr_to_octet_notation_str(ip) -> str:
 
 def create_subnets(
         orig_ip: str,
-        host_blocks_len: list[int]) -> list[tuple[str, str, str, str, str, str, str, str, str]]:
+        host_blocks_len: list[int]) -> list[dict]:
     """
     Perform actual subnetting on a given network and create a list of final subnets
     if the demanded host blocks all fit into.
@@ -184,10 +184,9 @@ def create_subnets(
     :except ValueError: If IP address octet string, ``orig_ip``, is invalid or if
         the last octet of ``orig_ip`` is not an even number (ends with zero in binary)
         and therefore is not a valid network address.
-    :return: List containing final subnets with their properties stored as strings inside a tuple
-        of the form ("<subnet IP addr>", "<subnet mask>", "<prefix>",
-        "<first host IP addr>", "<last host IP addr>", "<broadcast IP addr>",
-        "<succeeding subnet IP addr>", "<max host count>", "<annotation (if any, otherwise empty string)>").
+    :return: List containing final subnets with their properties stored in dictionaries, using the keys
+        "addr", "mask", "prefix", "first_host_addr", "last_host_addr", "broadcast_addr", "succeeding_addr",
+        "max_hosts" and "annotation".
     """
     final_subnets = []
     annotation = ""
@@ -206,14 +205,20 @@ def create_subnets(
     do_all_blocks_fit, faulty_blocks = validation.investigate_network_block_fit(orig_prefix, host_blocks_len)
     if not do_all_blocks_fit:
         faulty_subnets_descriptions = [
-            f"{faulty_block[0]}. subnet: {pow(2, faulty_block[1])-2} hosts max\n"
+            f"{faulty_block[0]}. Subnet: {pow(2, faulty_block[1])-2} hosts max\n"
             f"\thost portion: BS={faulty_block[1]} bits, "
             f"{faulty_block[2]} bits colliding with network portion\n"
             f"\tsubnet portion: BS={faulty_block[3]} bits, "
-            f"{faulty_block[4]} bits exploding (exceed available subnets)"
+            f"{faulty_block[4]} bits exploding\n"
             for faulty_block in faulty_blocks
         ]
-        err_description = f"Some of your demanded subnets won't fit:\n{'\n'.join(faulty_subnets_descriptions)}"
+        err_description = f"Sorry, some of your demanded subnets for network {orig_ip}/{orig_prefix} "\
+                          f"(class {orig_addr_class}) won't fit!\nPlease investigate the messages below:\n"\
+                          f"\n{'\n'.join(faulty_subnets_descriptions)}\n"\
+                          f"(i) For class C networks, you most likely ran out of host block space.\n"\
+                          f" A 'subnet portion: BS=0 bits' means that the host block size is too large,\n"\
+                          f" preventing the creation of subnets at all.\n"\
+                          f" More than zero 'bits exploding' means you ran out of subnetting block space.\n"
         raise UserWarning(err_description)
 
     # Everything is fine, so let's perform the actual subnetting:
@@ -245,10 +250,11 @@ def create_subnets(
             subnet_succeeding_addr_str = convert_ip_addr_to_octet_notation_str(subnet_succeeding_addr_int)
             subnet_mask_str = convert_prefix_to_mask(subnet_prefix)
             final_subnets.append(
-                (
-                    subnet_addr_str, subnet_mask_str, str(subnet_prefix),
-                    subnet_first_host_addr_str, subnet_last_host_addr_str, subnet_broadcast_addr_str,
-                    subnet_succeeding_addr_str, str(subnet_host_count), annotation
-                )
+                {
+                    "addr": subnet_addr_str, "mask": subnet_mask_str, "prefix": str(subnet_prefix),
+                    "first_host_addr": subnet_first_host_addr_str, "last_host_addr": subnet_last_host_addr_str,
+                    "broadcast_addr": subnet_broadcast_addr_str, "succeeding_addr": subnet_succeeding_addr_str,
+                    "max_hosts": str(subnet_host_count), "annotation": annotation
+                }
             )
         return final_subnets
