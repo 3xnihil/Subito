@@ -23,19 +23,19 @@ def echo_netplan(final_subnets: list[dict]) -> None:
         "max_hosts" and "annotation".
     :return: Nothing.
     """
-    click.echo(f"\nSubnetting table for network {final_subnets[0]["addr"]}/{final_subnets[0]["prefix"]}\n")
+    click.echo(f"\nSubnetting table for network {final_subnets[0]['addr']}/{final_subnets[0]['prefix']}\n")
     for (n, subnet_config) in enumerate(final_subnets):
-        if subnet_config["annotation"] != "":
-            annotation_str = f"\n\t(i) {subnet_config["annotation"]}\n"
+        if subnet_config['annotation'] != "":
+            annotation_str = f"\n\t(i) {subnet_config['annotation']}\n"
         else:
             annotation_str = f"\n"
         click.echo(
-            f"{n+1}. Subnet {subnet_config["addr"]}/{subnet_config["prefix"]}\n"
-            f"\tCapable of {subnet_config["max_hosts"]} hosts at max\n"
-            f"\tSubnet mask:     {subnet_config["mask"]}\n"
-            f"\tFirst host addr: {subnet_config["first_host_addr"]}\n"
-            f"\tLast host addr:  {subnet_config["last_host_addr"]}\n"
-            f"\tBroadcast addr:  {subnet_config["broadcast_addr"]}"
+            f"{n+1}. Subnet {subnet_config['addr']}/{subnet_config['prefix']}\n"
+            f"\tCapable of {subnet_config['max_hosts']} hosts at max\n"
+            f"\tSubnet mask:     {subnet_config['mask']}\n"
+            f"\tFirst host addr: {subnet_config['first_host_addr']}\n"
+            f"\tLast host addr:  {subnet_config['last_host_addr']}\n"
+            f"\tBroadcast addr:  {subnet_config['broadcast_addr']}"
             f"{annotation_str}"
         )
         
@@ -78,25 +78,25 @@ def save_subnetting_to_spreadsheet(
     k = 0
     for (i, subnet) in enumerate(final_subnets):
         further_addresses = (
-            subnet["first_host_addr"],
-            subnet["last_host_addr"],
-            subnet["broadcast_addr"]
+            subnet['first_host_addr'],
+            subnet['last_host_addr'],
+            subnet['broadcast_addr']
         )
 
         # The subnet's number
         worksheet.write(k + 1, 0, i + 1)
 
         # The subnet's own address
-        worksheet.write(k + 1, 1, subnet["addr"])
+        worksheet.write(k + 1, 1, subnet['addr'])
 
         # Maximum host amount for this subnet
-        worksheet.write(k + 1, 2, subnet["max_hosts"])
+        worksheet.write(k + 1, 2, subnet['max_hosts'])
 
         # Subnet mask
-        worksheet.write(k + 1, 3, subnet["mask"])
+        worksheet.write(k + 1, 3, subnet['mask'])
 
         # Prefix
-        worksheet.write(k + 1, 4, subnet["prefix"])
+        worksheet.write(k + 1, 4, subnet['prefix'])
 
         # Write the already known "host names"
         for (row, entry) in enumerate(row_titles):
@@ -115,4 +115,4 @@ def save_subnetting_to_spreadsheet(
 
     # Important: Finally close the file!
     workbook.close()
-    click.echo(f" (i) Stored your spreadsheet at \"./{filename}.xlsx\"\n")
+    click.echo(f" ✅ Stored your spreadsheet at \"./{filename}.xlsx\"\n")

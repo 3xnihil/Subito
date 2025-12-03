@@ -9,8 +9,8 @@
 #
 
 import re
-import validation
 from math import ceil
+from . import validation
 
 
 def get_host_blocks(user_config_str: str, is_binary_block_len: bool=True) -> list[int]:
@@ -225,14 +225,16 @@ def create_subnets(
             f"{faulty_block[4]} bits exploding\n"
             for faulty_block in faulty_blocks
         ]
-        err_description = f"Sorry, some of your demanded subnets for network {orig_ip}/{orig_prefix} "\
-                          f"(class {orig_addr_class}) won't fit!\nPlease investigate the messages below:\n"\
-                          f"\n{'\n'.join(faulty_subnets_descriptions)}\n"\
-                          f"(i) For class C networks, you most likely ran out of host block space.\n"\
-                          f" A 'subnet portion: BS=0 bits' means that the host block size is too large,\n"\
-                          f" preventing the creation of subnets at all.\n"\
-                          f" More than zero 'bits exploding' means you ran out of subnetting block space.\n"
-        raise UserWarning(err_description)
+        faulty_subnets_str = '\n'.join(faulty_subnets_descriptions)
+        raise UserWarning(
+            f"Sorry, some of your demanded subnets for network {orig_ip}/{orig_prefix} "
+            f"(class {orig_addr_class}) won't fit!\nPlease investigate the messages below:\n"
+            f"\n{faulty_subnets_str}\n"
+            f"(i) For class C networks, you most likely ran out of host block space.\n"
+            f" A 'subnet portion: BS=0 bits' means that the host block size is too large,\n"
+            f" preventing the creation of subnets at all.\n"
+            f" More than zero 'bits exploding' means you ran out of subnetting block space.\n"
+        )
 
     # Everything is fine, so let's perform the actual subnetting:
     else:
