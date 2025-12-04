@@ -1,6 +1,6 @@
 # ./pyproject.toml
 #
-# SUBito subnetting tool
+# Subito subnetting tool
 # Author: Johannes Hüffer
 # License: GPL-3.0-only
 #
@@ -12,15 +12,36 @@ requires = ["setuptools>=65.5.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "subito"
+name = "subito-subnetting-utility"
 version = "0.1.0"
-description = "Subnetting utility and netplanning tool for your command line."
+description = "Robust, fast and supportive subnetting utility for your CLI."
+license = { file = "COPYING" }
+classifiers = [
+    "Environment :: Console",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: System Administrators",
+    "Operating System :: POSIX",
+    "Topic :: Education",
+    "Topic :: Internet",
+    "Topic :: System :: Networking",
+    "Topic :: Utilities",
+    "Programming Language :: Python :: 3"
+]
+keywords = [
+    "subnet", "subnetting", "subito",
+    "network", "utility", "tool", "cli"
+]
 readme = "README.md"
-authors = [{ name = "Johannes Hüffer" }]
+authors = [{ name = "Johannes Hüffer", email = "exnihilo@airmail.cc" }]
 dependencies = [
     "click >= 8.1.3",
     "xlsxwriter >= 3.2.2"
 ]
+requires-python = ">=3.10"
+
+[project.urls]
+Homepage = "https://github.com/3xnihil/subito"
 
 [project.scripts]
 subito = "subito.__main__:cli"

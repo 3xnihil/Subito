@@ -1,11 +1,11 @@
 # ./subito/__main__.py
 #
-# SUBito subnetting tool
+# Subito subnetting tool
 # Author: Johannes Hüffer
 # License: GPL-3.0-only
 #
 # Main
-# CLI entry point and main program structure.
+# CLI entry point and command provisioning.
 #
 
 import click
@@ -14,8 +14,8 @@ from . import cmds
 @click.group()
 def cli():
     """
-    Straightforward, lightweight, robust and fast subnetting tool and network engineering utility.
-    Subito aims to support you in creating robust and fool-proof network environments.
+    Robust, fast and supportive subnetting and network engineering utility.
+    Subito aims to help you in creating well-planned and efficient network environments.
     Core features:
 
     - create-netplan: Cover basic to advanced subnetting scenarios. Tell Subito which and how

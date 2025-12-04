@@ -4,5 +4,5 @@
 .idea
 *.txt
 *_test*
-/subito.egg-info/
 __pycache__
+/subito_subnetting_utility.egg-info/

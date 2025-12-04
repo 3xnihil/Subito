@@ -1,6 +1,6 @@
 # ./subito/output.py
 #
-# SUBito subnetting tool
+# Subito subnetting tool
 # Author: Johannes Hüffer
 # License: GPL-3.0-only
 #
