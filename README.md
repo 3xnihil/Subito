@@ -1,7 +1,7 @@
 # Subito: CLI subnetting utility
 
- **Fast, robust and supportive subnetting and network engineering utility.
- Subito aims to help you in creating well-planned and efficient IPv4 network environments.**
+### Fast, robust and supportive subnetting and network engineering utility.
+Subito aims to help you in creating well-planned and efficient IPv4 network environments.
 
 ---
 
@@ -11,7 +11,7 @@
 - [Get ready](#get-ready)
 - [Commands](#-commands)
 - [Usage](#usage)
-- [Error Handling](#error-handling)
+- [Error Feedback](#error-feedback)
 - [Final Thoughts](#final-thoughts)
 - [Acknowledgments](#-acknowledgements)
 
@@ -272,7 +272,7 @@ $ subito convert 255.255.255.224
 As a prefix: /27
 ```
 
-## Error Handling
+## Error Feedback
 
 Subito has been created on the mindset that **software should always act in the user's interests**.
 If problems occur, nobody wants to be left in the cold. For this reason, Subito aims to support its
